@@ -1,3 +1,4 @@
+// tests/common/mod.rs
 use rust_htslib::bam::record::Record;
 use std::path::PathBuf;
 
@@ -8,7 +9,7 @@ pub fn test_data_dir() -> PathBuf {
 pub fn count_cigar_ops(record: &Record, op_type: u32) -> usize {
     record.cigar()
         .iter()
-        .filter(|op| op.0 == op_type)
+        .filter(|op| op.char() as u32 == op_type)
         .count()
 }
 

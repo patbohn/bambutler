@@ -2,9 +2,13 @@ use structopt::StructOpt;
 use anyhow::Result;
 use std::path::PathBuf;
 use log::info;
+use rayon::prelude::*;
+
+// Import our library functionality
+use bambutler::{create_read_index, process_bam_file};
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "bam-clip-converter", about = "Convert hard clips to soft clips and transfer tags")]
+#[structopt(name = "bambutler", about = "Convert hard clips to soft clips and transfer tags")]
 struct Opts {
     /// Input aligned BAM files
     #[structopt(long, parse(from_os_str))]
@@ -17,6 +21,10 @@ struct Opts {
     /// Output directory
     #[structopt(long, parse(from_os_str))]
     output_dir: PathBuf,
+
+    /// Tags to transfer (comma-separated list, e.g. "mv,ts,ns,pi")
+    #[structopt(long, default_value = "", use_delimiter = true, value_delimiter = ',')]
+    transfer_tags: Vec<String>,
 }
 
 fn main() -> Result<()> {
@@ -27,12 +35,12 @@ fn main() -> Result<()> {
     std::fs::create_dir_all(&opts.output_dir)?;
 
     // Create index from unaligned BAM
-    let unaligned_index = bam_clip_converter::create_read_index(&opts.unaligned_bam)?;
+    let unaligned_index = create_read_index(&opts.unaligned_bam)?;
 
     // Process BAM files in parallel
     let results: Result<Vec<_>> = opts.aligned_bams
         .par_iter()
-        .map(|path| bam_clip_converter::process_bam_file(path, &unaligned_index, &opts.output_dir))
+        .map(|path| process_bam_file(path, &unaligned_index, &opts.output_dir, &opts.transfer_tags))
         .collect();
 
     // Aggregate statistics
