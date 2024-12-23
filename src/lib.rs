@@ -152,8 +152,6 @@ pub fn process_bam_file(
 
                 // Convert CIGAR if needed and prepare record data
                 let cigar = convert_cigar(buffer.cigar());
-                println!("Read {} updated from sequence length {} to {}. CIGAR updated from {} to {}.", 
-                String::from_utf8_lossy(&name), &new_record.seq().len(), &unaligned.sequence.len(), &new_record.cigar(), &cigar);
                 new_record.set(
                     &name,
                     Some(&bam::record::CigarString(cigar.to_vec())),
@@ -186,8 +184,8 @@ pub fn process_bam_file(
     }
 
     info!(
-        "File stats: processed={}, modified={}, missing={}",
-        stats.reads_processed, stats.reads_modified, stats.reads_missing
+        "File stats: processed={}, missing={}",
+        stats.reads_processed, stats.reads_missing
     );
     
     Ok(stats)
