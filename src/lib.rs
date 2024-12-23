@@ -1,14 +1,55 @@
 use rust_htslib::{bam, bam::record::{Record, Aux}, bam::Read};
 use rustc_hash::FxHashMap;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
 use log::info;
+
+
+#[derive(Clone)]
+pub enum TagValue {
+    Integer(i32),
+    Float(f32),
+    String(String),
+    ByteArray(Vec<u8>), // For B:c tags
+}
+
+impl TagValue {
+    pub fn from_aux(aux: &Aux) -> Result<Self> {
+        match aux {
+            Aux::I8(v) => Ok(TagValue::Integer(*v as i32)),
+            Aux::U8(v) => Ok(TagValue::Integer(*v as i32)),
+            Aux::I16(v) => Ok(TagValue::Integer(*v as i32)),
+            Aux::U16(v) => Ok(TagValue::Integer(*v as i32)),
+            Aux::I32(v) => Ok(TagValue::Integer(*v)),
+            Aux::U32(v) => Ok(TagValue::Integer(*v as i32)),
+            Aux::Float(v) => Ok(TagValue::Float(*v)),
+            Aux::String(v) => Ok(TagValue::String(v.to_string())),
+            Aux::ArrayU8(v) => {
+                // Collect iterator directly into Vec<u8>
+                Ok(TagValue::ByteArray(v.iter().collect()))
+            },
+            _ => Err(anyhow!("Unsupported tag type")),
+        }
+    }
+
+    pub fn to_aux(&self) -> Aux<'_> {
+        match self {
+            TagValue::Integer(v) => Aux::I32(*v),
+            TagValue::Float(v) => Aux::Float(*v),
+            TagValue::String(v) => Aux::String(v),
+            TagValue::ByteArray(v) => {
+                // Convert Vec<u8> to AuxArray using into()
+                Aux::ArrayU8(v.as_slice().into())
+            },
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct UnalignedRead {
     pub sequence: Vec<u8>,
     pub qualities: Vec<u8>,
-    pub tags: Vec<(Vec<u8>, Aux)>,  // Store the Aux directly
+    pub tags: Vec<(Vec<u8>, TagValue)>,
 }
 
 #[derive(Default)]
@@ -35,10 +76,15 @@ pub fn create_read_index(path: &PathBuf) -> Result<FxHashMap<Vec<u8>, UnalignedR
         result?;
         let name = buffer.qname().to_vec();
         
-        // Store tags directly
+        // Convert tags to owned values
         let tags: Vec<_> = buffer
             .aux_iter()
-            .filter_map(Result::ok)
+            .filter_map(|r| r.ok())
+            .filter_map(|(tag, aux)| {
+                TagValue::from_aux(&aux)
+                    .ok()
+                    .map(|value| (tag.to_vec(), value))
+            })
             .collect();
 
         index.insert(name, UnalignedRead {
@@ -151,7 +197,7 @@ pub fn process_bam_file(
                             // Find matching tag in unaligned read
                             if let Some((_, value)) = unaligned.tags.iter()
                                 .find(|(t, _)| t == tag_bytes) {
-                                new_record.push_aux(tag_bytes, value.clone())?;
+                                new_record.push_aux(tag_bytes, value.to_aux())?;
                             }
                         }
                     }
