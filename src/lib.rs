@@ -4,83 +4,11 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 use log::info;
 
-
-#[derive(Clone, Debug)]
-pub enum TagValue {
-    Int8(i8),
-    UInt8(u8),
-    Int16(i16),
-    UInt16(u16),
-    Int32(i32),
-    UInt32(u32),
-    Float(f32),
-    String(Vec<u8>),
-    IntArray(Vec<i32>),  // B:i
-    UIntArray(Vec<u32>), // B:I
-    Int8Array(Vec<i8>),  // B:c
-    UInt8Array(Vec<u8>), // B:C
-    Int16Array(Vec<i16>), // B:s
-    UInt16Array(Vec<u16>), // B:S
-}
-
-impl TagValue {
-    pub fn from_aux(aux: Aux) -> Option<Self> {
-        match aux {
-            Aux::I8(v) => Some(TagValue::Int8(v)),
-            Aux::U8(v) => Some(TagValue::UInt8(v)),
-            Aux::I16(v) => Some(TagValue::Int16(v)),
-            Aux::U16(v) => Some(TagValue::UInt16(v)),
-            Aux::I32(v) => Some(TagValue::Int32(v)),
-            Aux::U32(v) => Some(TagValue::UInt32(v)),
-            Aux::Float(v) => Some(TagValue::Float(v)),
-            Aux::String(v) => Some(TagValue::String(v.to_vec())),
-            Aux::ArrayI32(v) => Some(TagValue::IntArray(v.to_vec())),
-            Aux::ArrayU32(v) => Some(TagValue::UIntArray(v.to_vec())),
-            Aux::ArrayI8(v) => Some(TagValue::Int8Array(v.to_vec())),
-            Aux::ArrayU8(v) => Some(TagValue::UInt8Array(v.to_vec())),
-            Aux::ArrayI16(v) => Some(TagValue::Int16Array(v.to_vec())),
-            Aux::ArrayU16(v) => Some(TagValue::UInt16Array(v.to_vec())),
-            _ => None,
-        }
-    }
-
-    pub fn to_aux(&self) -> Aux {
-        match self {
-            TagValue::Int8(v) => Aux::I8(*v),
-            TagValue::UInt8(v) => Aux::U8(*v),
-            TagValue::Int16(v) => Aux::I16(*v),
-            TagValue::UInt16(v) => Aux::U16(*v),
-            TagValue::Int32(v) => Aux::I32(*v),
-            TagValue::UInt32(v) => Aux::U32(*v),
-            TagValue::Float(v) => Aux::Float(*v),
-            TagValue::String(v) => Aux::String(v),
-            TagValue::IntArray(v) => Aux::ArrayI32(v),
-            TagValue::UIntArray(v) => Aux::ArrayU32(v),
-            TagValue::Int8Array(v) => Aux::ArrayI8(v),
-            TagValue::UInt8Array(v) => Aux::ArrayU8(v),
-            TagValue::Int16Array(v) => Aux::ArrayI16(v),
-            TagValue::UInt16Array(v) => Aux::ArrayU16(v),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct UnalignedRead {
     pub sequence: Vec<u8>,
     pub qualities: Vec<u8>,
-    pub tags: Vec<(Vec<u8>, TagValue)>,
-}
-
-impl UnalignedRead {
-    pub fn has_tag(&self, tag_name: &[u8]) -> bool {
-        self.tags.iter().any(|(t, _)| t == tag_name)
-    }
-
-    pub fn get_tag_value(&self, tag_name: &[u8]) -> Option<&TagValue> {
-        self.tags.iter()
-            .find(|(t, _)| t == tag_name)
-            .map(|(_, v)| v)
-    }
+    pub tags: Vec<(Vec<u8>, Aux)>,  // Store the Aux directly
 }
 
 #[derive(Default)]
@@ -96,7 +24,6 @@ impl Stats {
     }
 }
 
-
 /// Create an index of reads from the unaligned BAM file
 pub fn create_read_index(path: &PathBuf) -> Result<FxHashMap<Vec<u8>, UnalignedRead>> {
     info!("Creating index from unaligned BAM file...");
@@ -108,14 +35,10 @@ pub fn create_read_index(path: &PathBuf) -> Result<FxHashMap<Vec<u8>, UnalignedR
         result?;
         let name = buffer.qname().to_vec();
         
-        // Store tag data with proper types
+        // Store tags directly
         let tags: Vec<_> = buffer
             .aux_iter()
-            .filter_map(|result| {
-                result.ok().and_then(|(tag, aux)| {
-                    TagValue::from_aux(aux).map(|value| (tag.to_vec(), value))
-                })
-            })
+            .filter_map(Result::ok)
             .collect();
 
         index.insert(name, UnalignedRead {
@@ -212,7 +135,7 @@ pub fn process_bam_file(
                 // Set the complete record data
                 new_record.set_data(&data);
 
-                // Transfer original tags
+                // Copy original tags
                 for result in buffer.aux_iter() {
                     if let Ok((tag, value)) = result {
                         new_record.push_aux(tag, value)?;
@@ -222,18 +145,17 @@ pub fn process_bam_file(
                 // Add new tags from unaligned read
                 for tag_name in transfer_tags {
                     let tag_bytes = tag_name.as_bytes();
-                    // Only transfer the tag if:
-                    // 1. It's in our transfer list
-                    // 2. The unaligned read has it
-                    // 3. The aligned read doesn't already have it
-                    if tag_bytes.len() == 2 && 
-                    unaligned.has_tag(tag_bytes) && 
-                    !buffer.aux(tag_bytes).is_ok() {
-                     if let Some(value) = unaligned.get_tag_value(tag_bytes) {
-                         new_record.push_aux(tag_bytes, value.to_aux())?;
-                     }
-                 }
-             }
+                    if tag_bytes.len() == 2 {
+                        // Only transfer if aligned read doesn't have the tag
+                        if !buffer.aux(tag_bytes).is_ok() {
+                            // Find matching tag in unaligned read
+                            if let Some((_, value)) = unaligned.tags.iter()
+                                .find(|(t, _)| t == tag_bytes) {
+                                new_record.push_aux(tag_bytes, value.clone())?;
+                            }
+                        }
+                    }
+                }
 
                 output.write(&new_record)?;
             }
