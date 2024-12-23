@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use log::info;
 use rayon::prelude::*;
 
-// Import our library functionality
 use bambutler::{create_read_index, process_bam_file};
 
 #[derive(Debug, StructOpt)]
@@ -23,7 +22,7 @@ struct Opts {
     output_dir: PathBuf,
 
     /// Tags to transfer (comma-separated list, e.g. "mv,ts,ns,pi")
-    #[structopt(long, default_value = "", use_delimiter = true, value_delimiter = ',')]
+    #[structopt(long, default_value = "", use_delimiter = true, value_delimiter = ",")]
     transfer_tags: Vec<String>,
 }
 
