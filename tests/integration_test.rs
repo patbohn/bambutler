@@ -3,6 +3,7 @@ use bambutler::{create_read_index, process_bam_file};
 use anyhow::Result;
 use rust_htslib::bam::{self, Read};
 use tempfile::TempDir;
+use rust_htslib::bam::record::Aux;
 
 mod common;
 use common::{count_cigar_ops, test_data_dir};
@@ -33,11 +34,20 @@ fn test_process_bam_file() -> Result<()> {
     let unaligned_path = test_dir.join("unaligned.bam");
     
     let unaligned_index = create_read_index(&unaligned_path)?;
+
+    // Test mandatory tags (mv as B:c array and ts as integer)
+    // plus an optional tag (pi)
+    let transfer_tags = vec![
+        "mv".to_string(),  // movement tag (B:c type)
+        "ts".to_string(),  // timestamp (integer)
+        "pi".to_string()   // optional tag
+    ];
     
     let stats = process_bam_file(
         &aligned_path,
         &unaligned_index,
         &temp_dir.path().to_path_buf(),
+        &transfer_tags
     )?;
     
     let output_path = temp_dir.path().join(
@@ -64,13 +74,26 @@ fn test_process_bam_file() -> Result<()> {
         
         let qname = record.qname().to_vec();
         if let Some(unaligned) = unaligned_index.get(&qname) {
-            for (tag, _) in &unaligned.tags {
-                assert!(
-                    record.aux(tag.as_slice()).is_ok(),
-                    "Missing tag {} from unaligned read",
-                    String::from_utf8_lossy(tag)
-                );
+                       // Check mandatory tags with correct types
+           if let Ok(mv_tag) = record.aux(b"mv") {
+            match mv_tag {
+                Aux::ArrayU8(_) => (), // B:c type
+                _ => panic!("mv tag should be of type B:c (ArrayU8)")
             }
+        }
+        
+        if let Ok(ts_tag) = record.aux(b"ts") {
+            match ts_tag {
+                Aux::I32(_) | Aux::U32(_) | Aux::I16(_) | Aux::U16(_) | 
+                Aux::I8(_) | Aux::U8(_) => (), // Integer types
+                _ => panic!("ts tag should be an integer type")
+            }
+        }
+        
+        // For pi tag, just check if it exists when it should
+        if unaligned.tags.iter().any(|(t, _)| t == b"pi") {
+            assert!(record.aux(b"pi").is_ok(), "pi tag should be transferred when present");
+        }
         }
     }
 

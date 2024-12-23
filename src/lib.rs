@@ -1,8 +1,9 @@
-use rust_htslib::{bam, bam::record::{Record, Aux}, bam::Read};
+use rust_htslib::{bam, bam::record::{Record, Aux, Cigar, CigarString, CigarStringView}, bam::Read};
 use rustc_hash::FxHashMap;
 use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
 use log::info;
+use String;
 
 
 #[derive(Clone)]
@@ -99,19 +100,14 @@ pub fn create_read_index(path: &PathBuf) -> Result<FxHashMap<Vec<u8>, UnalignedR
 }
 
 /// Convert CIGAR string from hard clips to soft clips
-fn convert_cigar(cigar: &[u32]) -> Vec<u32> {
-    cigar.iter()
-        .map(|&op| {
-            let op_type = op >> 4;
-            let op_len = op & 0xf;
-            // If hard clip (5), convert to soft clip (4)
-            if op_type == 5 {
-                (4 << 4) | op_len
-            } else {
-                op
-            }
-        })
-        .collect()
+fn convert_cigar(cigar: CigarStringView) -> CigarString {
+    let cigar_vec: Vec<Cigar> = cigar.iter().map(|&op| {
+            match op {
+                Cigar::HardClip(op_len) => Cigar::SoftClip(op_len), // Convert HardClip to SoftClip
+                _ => op,
+        }
+    }).collect();
+    CigarString(cigar_vec)
 }
 
 /// Process a single BAM file
@@ -147,46 +143,23 @@ pub fn process_bam_file(
         }
 
         let name = buffer.qname().to_vec();
-        let has_hard_clips = buffer
-            .raw_cigar()
-            .iter()
-            .any(|&op| (op >> 4) == 5);  // 5 is BAM_CHARD_CLIP
 
         match unaligned_index.get(&name) {
             Some(unaligned) => {
-                let mut new_record = Record::new();
-                
                 // Copy basic fields
-                new_record.set_qname(&name);
-                new_record.set_pos(buffer.pos());
-                new_record.set_mapq(buffer.mapq());
-                new_record.set_flags(buffer.flags());
+                let mut new_record = buffer.clone();
                 
+
                 // Convert CIGAR if needed and prepare record data
-                let cigar = if has_hard_clips {
-                    stats.reads_modified += 1;
-                    convert_cigar(buffer.raw_cigar())
-                } else {
-                    buffer.raw_cigar().to_vec()
-                };
-
-                // Create the full BAM record data
-                let mut data = Vec::new();
-                data.extend_from_slice(&name);
-                data.push(0u8); // null terminator for name
-                data.extend(cigar.iter().flat_map(|x| x.to_le_bytes()));
-                data.extend(&unaligned.sequence);
-                data.extend(&unaligned.qualities);
-
-                // Set the complete record data
-                new_record.set_data(&data);
-
-                // Copy original tags
-                for result in buffer.aux_iter() {
-                    if let Ok((tag, value)) = result {
-                        new_record.push_aux(tag, value)?;
-                    }
-                }
+                let cigar = convert_cigar(buffer.cigar());
+                println!("Read {} updated from sequence length {} to {}. CIGAR updated from {} to {}.", 
+                String::from_utf8_lossy(&name), &new_record.seq().len(), &unaligned.sequence.len(), &new_record.cigar(), &cigar);
+                new_record.set(
+                    &name,
+                    Some(&bam::record::CigarString(cigar.to_vec())),
+                    &unaligned.sequence,
+                    &unaligned.qualities
+                );
 
                 // Add new tags from unaligned read
                 for tag_name in transfer_tags {
