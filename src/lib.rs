@@ -68,7 +68,7 @@ impl Stats {
 
 /// Create an index of reads from the unaligned BAM file
 pub fn create_read_index(path: &PathBuf) -> Result<FxHashMap<Vec<u8>, UnalignedRead>> {
-    info!("Creating index from unaligned BAM file...");
+    info!("Reading in from unaligned BAM file...");
     let mut bam = bam::Reader::from_path(path)?;
     let mut index = FxHashMap::default();
     let mut buffer = Record::new();
@@ -95,7 +95,7 @@ pub fn create_read_index(path: &PathBuf) -> Result<FxHashMap<Vec<u8>, UnalignedR
         });
     }
 
-    info!("Indexed {} reads", index.len());
+    info!("Loaded {} reads", index.len());
     Ok(index)
 }
 
@@ -137,10 +137,6 @@ pub fn process_bam_file(
     while let Some(result) = input.read(&mut buffer) {
         result?;
         stats.reads_processed += 1;
-
-        if stats.reads_processed % 100_000 == 0 {
-            info!("Processed {} reads...", stats.reads_processed);
-        }
 
         let name = buffer.qname().to_vec();
 
@@ -184,8 +180,8 @@ pub fn process_bam_file(
     }
 
     info!(
-        "File stats: processed={}, missing={}",
-        stats.reads_processed, stats.reads_missing
+        "File stats: processed={}, missing={} written to {:?}",
+        stats.reads_processed, stats.reads_missing, &output_path
     );
     
     Ok(stats)
