@@ -77,9 +77,11 @@ fn test_process_bam_file() -> Result<()> {
                        // Check mandatory tags with correct types
            if let Ok(mv_tag) = record.aux(b"mv") {
             match mv_tag {
-                Aux::ArrayU8(_) => (), // B:c type
-                _ => panic!("mv tag should be of type B:c (ArrayU8)")
+                Aux::ArrayI8(_) => (), // B:c type
+                _ => panic!("mv tag should be of type B:c (ArrayI8)")
             }
+        } else {
+            panic!("Could not read in mv tag.")
         }
         
         if let Ok(ts_tag) = record.aux(b"ts") {
@@ -88,6 +90,8 @@ fn test_process_bam_file() -> Result<()> {
                 Aux::I8(_) | Aux::U8(_) => (), // Integer types
                 _ => panic!("ts tag should be an integer type")
             }
+        } else {
+            panic!("Could not read in ts tag.")
         }
         
         // For pi tag, just check if it exists when it should

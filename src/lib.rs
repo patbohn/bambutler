@@ -11,7 +11,7 @@ pub enum TagValue {
     Integer(i32),
     Float(f32),
     String(String),
-    ByteArray(Vec<u8>), // For B:c tags
+    ByteArray(Vec<i8>), // For B:c tags 
 }
 
 impl TagValue {
@@ -25,7 +25,7 @@ impl TagValue {
             Aux::U32(v) => Ok(TagValue::Integer(*v as i32)),
             Aux::Float(v) => Ok(TagValue::Float(*v)),
             Aux::String(v) => Ok(TagValue::String(v.to_string())),
-            Aux::ArrayU8(v) => {
+            Aux::ArrayI8(v) => {
                 // Collect iterator directly into Vec<u8>
                 Ok(TagValue::ByteArray(v.iter().collect()))
             },
@@ -39,8 +39,8 @@ impl TagValue {
             TagValue::Float(v) => Aux::Float(*v),
             TagValue::String(v) => Aux::String(v),
             TagValue::ByteArray(v) => {
-                // Convert Vec<u8> to AuxArray using into()
-                Aux::ArrayU8(v.as_slice().into())
+                // Convert Vec<I8> to AuxArray using into()
+                Aux::ArrayI8(v.as_slice().into())
             },
         }
     }
