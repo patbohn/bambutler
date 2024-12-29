@@ -17,7 +17,7 @@ FLAGS:
 
 OPTIONS:
         --aligned-bams <aligned-bams>...      Input aligned BAM files
-        --output-dir <output-dir>             Output directory
-        --transfer-tags <transfer-tags>...    Tags to transfer (comma-separated list, e.g. "mv,ts,ns,pi") [default: ]
+        --output-dir <output-dir>             Output directory for aligned BAM with tags
+        --transfer-tags <transfer-tags>...    Tags to transfer (comma-separated list, e.g. "mv,pi,ts,sp,ns") [default: ]
         --unaligned-bam <unaligned-bam>       Input unaligned BAM file
 ```

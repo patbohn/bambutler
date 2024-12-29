@@ -17,11 +17,11 @@ struct Opts {
     #[structopt(long, parse(from_os_str))]
     unaligned_bam: PathBuf,
 
-    /// Output directory
+    /// Output directory for aligned BAM with tags 
     #[structopt(long, parse(from_os_str))]
     output_dir: PathBuf,
 
-    /// Tags to transfer (comma-separated list, e.g. "mv,ts,ns,pi")
+    /// Tags to transfer (comma-separated list, e.g. "mv,pi,ts,sp,ns")
     #[structopt(long, default_value = "", use_delimiter = true, value_delimiter = ",")]
     transfer_tags: Vec<String>,
 }
